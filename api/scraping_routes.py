@@ -1,31 +1,27 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, BackgroundTasks
 from sqlalchemy import text
 from data.db import engine
 from scripts.scrapping import run_scraping
-import subprocess
+from scripts.artist_scraping import run_artist_scraping
 
 router = APIRouter(prefix="/scraping", tags=["Scraping"])
-
 
 # ==========================================================
 # 🌎 SCRAPING GLOBAL DO KWORB
 # ==========================================================
 @router.get("/", summary="Executa o scraping do Kworb Global Top 200")
 def scraping_data():
-    """Executa o scraping do Kworb e retorna o total de músicas coletadas."""
     result = run_scraping()
     return {
         "mensagem": "Scraping executado com sucesso!",
         "dados": result
     }
 
-
 # ==========================================================
 # 📊 RANKING GLOBAL - TOP 200
 # ==========================================================
 @router.get("/ranking", summary="Lista músicas coletadas do Kworb")
-def listar_ranking(artist: str | None = Query(None, description="Filtrar por nome do artista")):
-    """Retorna as músicas armazenadas na tabela spotify_global_daily, com opção de filtrar por artista."""
+def listar_ranking(artist: str | None = Query(None)):
     query = "SELECT * FROM spotify_global_daily"
     params = {}
 
@@ -36,10 +32,8 @@ def listar_ranking(artist: str | None = Query(None, description="Filtrar por nom
     query += " ORDER BY position ASC"
 
     with engine.connect() as conn:
-        result = conn.execute(text(query), params)
-        rows = [dict(row._mapping) for row in result]
+        rows = [dict(r._mapping) for r in conn.execute(text(query), params)]
 
-    # ✅ Formatar streams e total_streams com separador de milhar (pontuação)
     for r in rows:
         if "streams" in r and isinstance(r["streams"], (int, float)):
             r["streams"] = f"{r['streams']:,}".replace(",", ".")
@@ -48,52 +42,36 @@ def listar_ranking(artist: str | None = Query(None, description="Filtrar por nom
 
     return rows
 
+# ==========================================================
+# 🎤 SCRAPING DE ARTISTA (BACKGROUND)
+# ==========================================================
 
-# ==========================================================
-# 🎤 SCRAPING DE ARTISTA
-# ==========================================================
-@router.get("/artist", summary="Executa o scraping completo de um artista do Kworb")
-def scraping_artista(
+def tarefa_scraping_artista(url: str):
+    try:
+        run_artist_scraping(url)
+    except Exception as e:
+        print("[ERRO NO SCRAPING DO ARTISTA]:", e)
+
+@router.get("/artist", summary="Inicia scraping de um artista (background)")
+async def scraping_artista(background: BackgroundTasks,
     url: str = Query(
         "https://kworb.net/spotify/artist/06HL4z0CvFAxyc27GXpf02_songs.html",
-        description="URL do artista no Kworb (ex: https://kworb.net/spotify/artist/ID_songs.html)",
+        description="URL do artista no Kworb"
     )
 ):
-    """
-    Executa o scraping completo de todas as músicas de um artista no Kworb.
-    - Faz a coleta da página de músicas do artista.
-    - Salva os dados no banco (tabela spotify_artist_songs).
-    - Retorna um resumo com total de músicas coletadas.
-    """
-    try:
-        print(f"Iniciando scraping via API: {url}")
-        import sys
-        result = subprocess.run(
-            [sys.executable, "-m", "scripts.artist_scraping"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return {
-            "mensagem": "Scraping do artista executado com sucesso!",
-            "saida": result.stdout.splitlines()[-10:],  # mostra as últimas linhas do log
-        }
-    except subprocess.CalledProcessError as e:
-        return {"erro": "Falha ao executar scraping", "detalhes": e.stderr}
+    background.add_task(tarefa_scraping_artista, url)
 
-
+    return {
+        "mensagem": "Scraping de artista iniciado em background!",
+        "processando": url,
+        "status": "continue usando a API normalmente"
+    }
 
 # ==========================================================
-# 🎧 RANKING DE MÚSICAS DO ARTISTA
+# 🎧 RANKING DO ARTISTA
 # ==========================================================
-@router.get("/artist/ranking", summary="Lista as estatísticas de artistas (tabela spotify_artist_songs)")
-def listar_estatisticas_artista(
-    artist: str | None = Query(None, description="Filtrar por nome do artista")
-):
-    """
-    Retorna os dados da tabela `spotify_artist_songs`,
-    contendo totais de streams e participações (lead, solo, feature).
-    """
+@router.get("/artist/ranking", summary="Lista músicas do artista raspadas")
+def listar_estatisticas_artista(artist: str | None = Query(None)):
     query = "SELECT * FROM spotify_artist_songs WHERE 1=1"
     params = {}
 
@@ -102,18 +80,14 @@ def listar_estatisticas_artista(
         params["artist"] = f"%{artist}%"
 
     with engine.connect() as conn:
-        result = conn.execute(text(query), params)
-        rows = [dict(row._mapping) for row in result]
+        rows = [dict(r._mapping) for r in conn.execute(text(query), params)]
 
-    # ✅ Formatar os números com pontuação
     for r in rows:
-        for campo in ["Total", "As lead", "Solo", "As feature"]:
-            if campo in r and isinstance(r[campo], str) and r[campo].replace(",", "").isdigit():
-                valor = int(r[campo].replace(",", ""))
-                r[campo] = f"{valor:,}".replace(",", ".")
+        for campo in ["streams_total", "chart_points"]:
+            if campo in r and isinstance(r[campo], int):
+                r[campo] = f"{r[campo]:,}".replace(",", ".")
 
     return {
         "total_registros": len(rows),
         "dados": rows
     }
-

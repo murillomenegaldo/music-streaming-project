@@ -17,6 +17,7 @@ def scraping_data():
         "dados": result
     }
 
+
 # ==========================================================
 # 📊 RANKING GLOBAL - TOP 200
 # ==========================================================
@@ -34,13 +35,22 @@ def listar_ranking(artist: str | None = Query(None)):
     with engine.connect() as conn:
         rows = [dict(r._mapping) for r in conn.execute(text(query), params)]
 
+    # Formatar números
     for r in rows:
-        if "streams" in r and isinstance(r["streams"], (int, float)):
-            r["streams"] = f"{r['streams']:,}".replace(",", ".")
-        if "total_streams" in r and isinstance(r["total_streams"], (int, float)):
-            r["total_streams"] = f"{r['total_streams']:,}".replace(",", ".")
+        if "streams" in r:
+            try:
+                r["streams"] = f"{int(r['streams']):,}".replace(",", ".")
+            except:
+                pass
+
+        if "total_streams" in r:
+            try:
+                r["total_streams"] = f"{int(r['total_streams']):,}".replace(",", ".")
+            except:
+                pass
 
     return rows
+
 
 # ==========================================================
 # 🎤 SCRAPING DE ARTISTA (BACKGROUND)
@@ -52,8 +62,10 @@ def tarefa_scraping_artista(url: str):
     except Exception as e:
         print("[ERRO NO SCRAPING DO ARTISTA]:", e)
 
+
 @router.get("/artist", summary="Inicia scraping de um artista (background)")
-async def scraping_artista(background: BackgroundTasks,
+async def scraping_artista(
+    background: BackgroundTasks,
     url: str = Query(
         "https://kworb.net/spotify/artist/06HL4z0CvFAxyc27GXpf02_songs.html",
         description="URL do artista no Kworb"
@@ -67,10 +79,11 @@ async def scraping_artista(background: BackgroundTasks,
         "status": "continue usando a API normalmente"
     }
 
+
 # ==========================================================
-# 🎧 RANKING DO ARTISTA
+# 🎧 RANKING DO ARTISTA — TABELA COMPLETA 'Songs'
 # ==========================================================
-@router.get("/artist/ranking", summary="Lista músicas do artista raspadas")
+@router.get("/artist/ranking", summary="Lista TODAS as músicas do artista raspadas")
 def listar_estatisticas_artista(artist: str | None = Query(None)):
     query = "SELECT * FROM spotify_artist_songs WHERE 1=1"
     params = {}
@@ -82,10 +95,14 @@ def listar_estatisticas_artista(artist: str | None = Query(None)):
     with engine.connect() as conn:
         rows = [dict(r._mapping) for r in conn.execute(text(query), params)]
 
+    # Formatar números da tabela Songs
     for r in rows:
-        for campo in ["streams_total", "chart_points"]:
-            if campo in r and isinstance(r[campo], int):
-                r[campo] = f"{r[campo]:,}".replace(",", ".")
+        for campo in ["streams", "peak_position", "days_on_chart", "chart_points"]:
+            if campo in r:
+                try:
+                    r[campo] = f"{int(r[campo]):,}".replace(",", ".")
+                except:
+                    pass
 
     return {
         "total_registros": len(rows),

@@ -1,4 +1,7 @@
-"""Scraping completo de músicas de um artista no Kworb (ex: Taylor Swift)."""
+"""
+Scraping completo das músicas de um artista no Kworb (tabela Songs).
+Compatível com Render + SQLite + execução em background.
+"""
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -7,96 +10,100 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
+from datetime import datetime
 from tqdm import tqdm
 
-# Banco SQLite
+# Banco SQLite local
 DB_URL = "sqlite:///data/banco.db"
 engine = create_engine(DB_URL)
 
 
+def tratar_numero(valor):
+    """Converte valores numéricos do Kworb (com vírgulas) para int."""
+    try:
+        return int(str(valor).replace(",", "").strip())
+    except:
+        return 0
+
+
 def get_artist_songs(url: str) -> pd.DataFrame:
-    """Raspa todas as músicas de um artista do Kworb e retorna um DataFrame."""
+    """Raspa TODAS as músicas da tabela Songs de um artista do Kworb."""
+    print(f"\n[RASPAGEM] Acessando URL: {url}")
 
-    print(f"[SCRAPING] Acessando URL: {url}")
-
-    response = requests.get(url, timeout=10, verify=False)
+    response = requests.get(url, timeout=15, verify=False)
     response.raise_for_status()
+
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # Encontra a tabela principal
+    # Encontrar tabela principal
     table = soup.find("table")
-    if table is None:
-        raise ValueError("Tabela de músicas não encontrada na página do artista.")
+    if not table:
+        raise ValueError("Tabela de músicas não encontrada na página!")
 
-    # Extrai cabeçalhos
-    headers = [
-        th.text.strip() if th.text.strip() else f"col_{i}"
-        for i, th in enumerate(table.find_all("th"))
-    ]
+    # Cabeçalhos da tabela
+    headers = [th.text.strip() if th.text.strip() else f"col_{i}"
+               for i, th in enumerate(table.find_all("th"))]
 
+    print(f"[INFO] Colunas encontradas: {headers}")
+
+    # Linhas da tabela
     rows = []
     for tr in tqdm(table.find_all("tr")[1:], desc="Lendo músicas"):
         cols = [td.text.strip() for td in tr.find_all("td")]
         if cols:
             rows.append(cols)
 
+    # Converter para DataFrame
     df = pd.DataFrame(rows, columns=headers)
 
-    # Renomeia e limpa colunas principais
+    # Renomear colunas importantes
     rename_map = {
         "Title": "title",
-        "Streams": "streams_total",
+        "Streams": "streams",
         "Peak": "peak_position",
         "Days": "days_on_chart",
         "First": "first_seen",
         "Last": "last_seen",
         "Points": "chart_points",
     }
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+    df = df.rename(columns=rename_map)
 
-    # Converte números
-    for col in ["streams_total", "peak_position", "days_on_chart", "chart_points"]:
+    # Converter colunas numéricas
+    for col in ["streams", "peak_position", "days_on_chart", "chart_points"]:
         if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(",", "")
-                .replace("", "0")
-                .astype(float)
-                .astype(int)
-            )
+            df[col] = df[col].apply(tratar_numero)
 
-    # Nome do artista (H1 da página)
+    # Nome do artista
     artist_name = soup.find("h1").text.strip() if soup.find("h1") else "Desconhecido"
     df["artist"] = artist_name
 
-    # Data da coleta
-    df["rank_date"] = pd.Timestamp.now().strftime("%Y-%m-%d")
+    # Data do scraping
+    df["rank_date"] = datetime.now().strftime("%Y-%m-%d")
 
     return df
 
 
-# FUNÇÃO NOVA – usada pela API (background)
-def run_artist_scraping(url: str) -> int:
-    """
-    Executa todo o scraping para qualquer artista e salva no banco.
-    Retorna o número de músicas coletadas.
-    """
+def run_artist_scraping(url: str):
+    """Executa o scraping e salva no banco."""
+    try:
+        df = get_artist_songs(url)
 
-    print(f"[SCRAPING] Iniciando scraping do artista: {url}")
+        # Salvar CSV local
+        df.to_csv("data/spotify_artist_songs.csv", index=False, encoding="utf-8")
 
-    df = get_artist_songs(url)
+        # Salvar no banco
+        df.to_sql("spotify_artist_songs", engine, if_exists="replace", index=False)
 
-    # Salvar CSV
-    df.to_csv("data/spotify_artist_songs.csv", index=False, encoding="utf-8")
+        print(f"\n✔ Scraping finalizado ({len(df)} músicas) e salvo no banco.")
+        return len(df)
 
-    # Salvar no SQLite
-    df.to_sql("spotify_artist_songs", engine, if_exists="replace", index=False)
+    except Exception as e:
+        print("\n❌ ERRO DURANTE O SCRAPING DO ARTISTA:")
+        print(e)
+        return None
 
-    print(f"[SCRAPING] Finalizado: {len(df)} músicas coletadas.")
-    return len(df)
 
-
-# Apenas se rodar pelo terminal
+# Execução direta pelo terminal
 if __name__ == "__main__":
-    run_artist_scraping("https://kworb.net/spotify/artist/06HL4z0CvFAxyc27GXpf02_songs.html")
+    URL_PADRAO = "https://kworb.net/spotify/artist/06HL4z0CvFAxyc27GXpf02_songs.html"
+    run_artist_scraping(URL_PADRAO)

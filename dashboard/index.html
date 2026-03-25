@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Financeiro – Murilo R M Carvalho</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #4f6ef7;
+      --accent2: #7c3aed;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --card-radius: 16px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px 40px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    header span {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .badge {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    /* KPI cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 20px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .kpi.blue::before  { background: var(--accent); }
+    .kpi.purple::before { background: var(--accent2); }
+    .kpi.yellow::before { background: var(--yellow); }
+    .kpi.green::before  { background: var(--green); }
+
+    .kpi-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .kpi-value.blue   { color: var(--accent); }
+    .kpi-value.purple { color: var(--accent2); }
+    .kpi-value.yellow { color: var(--yellow); }
+    .kpi-value.green  { color: var(--green); }
+
+    .kpi-sub {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Charts row */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    @media (max-width: 768px) { .charts-row { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 24px;
+    }
+
+    .card h2 {
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 20px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 260px;
+    }
+
+    /* Category list */
+    .cat-list { list-style: none; }
+    .cat-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .cat-item:last-child { border-bottom: none; }
+
+    .cat-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .cat-name { flex: 1; font-size: 0.9rem; }
+    .cat-bar-wrap {
+      flex: 2;
+      background: var(--surface2);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .cat-bar { height: 100%; border-radius: 4px; }
+
+    .cat-amount {
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-align: right;
+      min-width: 80px;
+    }
+    .cat-pct {
+      font-size: 0.75rem;
+      color: var(--muted);
+      min-width: 38px;
+      text-align: right;
+    }
+
+    /* Transactions table */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 14px;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 12px 14px; }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .amount-cell { font-weight: 600; color: var(--accent); text-align: right; }
+    .date-cell { color: var(--muted); white-space: nowrap; }
+    .installment-cell { color: var(--muted); font-size: 0.78rem; }
+
+    /* Spinner */
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      gap: 16px;
+      color: var(--muted);
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #content { display: none; }
+
+    .error-box {
+      background: #3b0a0a;
+      border: 1px solid var(--red);
+      border-radius: 12px;
+      padding: 20px;
+      color: #fca5a5;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Carregando dados financeiros…</span>
+</div>
+
+<div id="content">
+  <header>
+    <div>
+      <h1>Dashboard Financeiro</h1>
+      <span>Murilo R M Carvalho &mdash; Bradesco VISA Infinite Prime ••••2930</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge" id="statement-date"></span>
+      <span class="badge" style="border-color:#ef4444;color:#fca5a5">EM ABERTO</span>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div class="kpi-grid">
+    <div class="kpi blue">
+      <div class="kpi-label">Total da Fatura</div>
+      <div class="kpi-value blue" id="kpi-total">—</div>
+      <div class="kpi-sub" id="kpi-tx-count"></div>
+    </div>
+    <div class="kpi purple">
+      <div class="kpi-label">Maior Gasto</div>
+      <div class="kpi-value purple" id="kpi-largest">—</div>
+      <div class="kpi-sub" id="kpi-largest-desc"></div>
+    </div>
+    <div class="kpi yellow">
+      <div class="kpi-label">Ticket Médio</div>
+      <div class="kpi-value yellow" id="kpi-avg">—</div>
+      <div class="kpi-sub">por transação</div>
+    </div>
+    <div class="kpi green">
+      <div class="kpi-label">Categorias</div>
+      <div class="kpi-value green" id="kpi-categories">—</div>
+      <div class="kpi-sub">diferentes categorias</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="card">
+      <h2>Gastos por Categoria</h2>
+      <div class="chart-wrap">
+        <canvas id="pieChart"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Evolução Mensal (R$)</h2>
+      <div class="chart-wrap">
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category breakdown -->
+  <div class="card" style="margin-bottom:32px">
+    <h2>Detalhamento por Categoria</h2>
+    <ul class="cat-list" id="cat-list"></ul>
+  </div>
+
+  <!-- Transactions -->
+  <div class="card">
+    <h2>Transações</h2>
+    <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap" id="filter-pills"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Descrição</th>
+            <th>Categoria</th>
+            <th>Parcela</th>
+            <th style="text-align:right">Valor (R$)</th>
+          </tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const PALETTE = [
+  '#4f6ef7','#7c3aed','#f59e0b','#22c55e',
+  '#ef4444','#06b6d4','#f97316','#a855f7',
+];
+
+const fmt = v => 'R$ ' + v.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const fmtDate = d => {
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+};
+const monthLabel = m => {
+  const [y, mo] = m.split('-');
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return months[parseInt(mo,10)-1] + ' ' + y;
+};
+
+let allTransactions = [];
+let activeCategory = null;
+
+async function loadData() {
+  try {
+    const [reportRes, txRes] = await Promise.all([
+      fetch('/finances/reports'),
+      fetch('/finances/transactions'),
+    ]);
+
+    if (!reportRes.ok || !txRes.ok) throw new Error('Erro ao buscar dados da API');
+
+    const report = await reportRes.json();
+    const transactions = await txRes.json();
+    allTransactions = transactions;
+
+    renderKPIs(report);
+    renderPieChart(report.by_category);
+    renderBarChart(report.by_month);
+    renderCategoryList(report.by_category);
+    renderFilterPills(report.by_category);
+    renderTable(transactions);
+
+    document.getElementById('statement-date').textContent = 'Extrato: 24/03/2026';
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      `<div class="error-box"><strong>Erro ao carregar dados</strong><br/>${err.message}<br/><small>Verifique se a API está rodando e as transações foram inseridas.</small></div>`;
+  }
+}
+
+function renderKPIs(r) {
+  document.getElementById('kpi-total').textContent = fmt(r.total);
+  document.getElementById('kpi-tx-count').textContent = `${r.transaction_count} transações`;
+  document.getElementById('kpi-largest').textContent = fmt(r.largest_expense.amount);
+  document.getElementById('kpi-largest-desc').textContent = r.largest_expense.description;
+  document.getElementById('kpi-avg').textContent = fmt(r.average_transaction);
+  document.getElementById('kpi-categories').textContent = r.by_category.length;
+}
+
+function renderPieChart(cats) {
+  new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: cats.map(c => c.category),
+      datasets: [{
+        data: cats.map(c => c.total),
+        backgroundColor: PALETTE,
+        borderColor: '#1a1d27',
+        borderWidth: 3,
+        hoverOffset: 8,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color: '#94a3b8', boxWidth: 12, padding: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${fmt(ctx.parsed)} (${cats[ctx.dataIndex].percentage}%)`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderBarChart(months) {
+  new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels: months.map(m => monthLabel(m.month)),
+      datasets: [{
+        label: 'Total (R$)',
+        data: months.map(m => m.total),
+        backgroundColor: PALETTE[0] + 'cc',
+        borderColor: PALETTE[0],
+        borderWidth: 1,
+        borderRadius: 6,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.parsed.y) } },
+      },
+      scales: {
+        x: { grid: { color: '#2e3250' }, ticks: { color: '#94a3b8' } },
+        y: { grid: { color: '#2e3250' }, ticks: { color: '#94a3b8', callback: v => fmt(v) } },
+      },
+    },
+  });
+}
+
+function renderCategoryList(cats) {
+  const max = cats[0].total;
+  const list = document.getElementById('cat-list');
+  cats.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.className = 'cat-item';
+    li.innerHTML = `
+      <span class="cat-dot" style="background:${PALETTE[i % PALETTE.length]}"></span>
+      <span class="cat-name">${c.category}</span>
+      <div class="cat-bar-wrap">
+        <div class="cat-bar" style="width:${(c.total/max*100).toFixed(1)}%;background:${PALETTE[i % PALETTE.length]}"></div>
+      </div>
+      <span class="cat-amount">${fmt(c.total)}</span>
+      <span class="cat-pct">${c.percentage}%</span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function renderFilterPills(cats) {
+  const wrap = document.getElementById('filter-pills');
+  const allPill = makePill('Todas', null, true);
+  wrap.appendChild(allPill);
+  cats.forEach(c => wrap.appendChild(makePill(c.category, c.category, false)));
+}
+
+function makePill(label, cat, active) {
+  const btn = document.createElement('button');
+  btn.textContent = label;
+  btn.style.cssText = `cursor:pointer;border:1px solid ${active?'#4f6ef7':'#2e3250'};background:${active?'#4f6ef720':'transparent'};color:${active?'#4f6ef7':'#94a3b8'};border-radius:999px;padding:4px 14px;font-size:0.78rem;transition:all 0.15s`;
+  btn.onclick = () => {
+    activeCategory = cat;
+    document.querySelectorAll('#filter-pills button').forEach(b => {
+      b.style.borderColor = '#2e3250';
+      b.style.background = 'transparent';
+      b.style.color = '#94a3b8';
+    });
+    btn.style.borderColor = '#4f6ef7';
+    btn.style.background = '#4f6ef720';
+    btn.style.color = '#4f6ef7';
+    const filtered = cat ? allTransactions.filter(t => t.category === cat) : allTransactions;
+    renderTable(filtered);
+  };
+  return btn;
+}
+
+function renderTable(transactions) {
+  const body = document.getElementById('tx-body');
+  body.innerHTML = '';
+  transactions.forEach(t => {
+    const tr = document.createElement('tr');
+    const catIndex = [...new Set(allTransactions.map(x => x.category))].indexOf(t.category);
+    const color = PALETTE[catIndex % PALETTE.length];
+    tr.innerHTML = `
+      <td class="date-cell">${fmtDate(t.date)}</td>
+      <td>${t.description}</td>
+      <td><span class="pill" style="background:${color}22;color:${color};border:1px solid ${color}44">${t.category}</span></td>
+      <td class="installment-cell">${t.installment || '—'}</td>
+      <td class="amount-cell">${fmt(t.amount)}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+loadData();
+</script>
+</body>
+</html>
